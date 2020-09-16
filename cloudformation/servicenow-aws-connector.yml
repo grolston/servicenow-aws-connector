@@ -1,0 +1,155 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ServiceNow AWS Connector
+Parameters: {}
+
+Resources:
+
+  rServiceNowAwsSyncUser:
+    Type: AWS::IAM::User
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F10
+            reason: "Refactoring in later version."
+          - id: F2000
+            reason: "Permissions are unique to ServiceNow and would be group of 1."
+    Properties:
+      UserName: ServiceNowSyncUser
+      Path: "/"
+      Policies:
+        - PolicyName: viewBudget
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - budgets:ViewBudget
+                Resource: "*"
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSServiceCatalogAdminReadOnlyAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMReadOnlyAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSConfigUserAccess
+
+  rServiceNowAwsSyncUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref rServiceNowAwsSyncUser
+
+  rServiceNowAwsSyncUserSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: ServiceNowSyncUser
+      Description: API Key for ServiceNow Sync User
+      SecretString: !Sub '{"AccessKeyID":"${rServiceNowAwsSyncUserAccessKey}","AccessKey":"${rServiceNowAwsSyncUserAccessKey.SecretAccessKey}"}'
+      Tags:
+        - Key: ServiceNow
+          Value: SyncUser
+
+  rServiceNowAwsEndUser:
+    Type: AWS::IAM::User
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F10
+            reason: "Refactoring in later version."
+          - id: F2000
+            reason: "Permissions are unique to ServiceNow and would be group of 1."
+    Properties:
+      UserName: ServiceNowEndUser
+      Path: "/"
+      Policies:
+        - PolicyName: AWSCloudFormationStackSetAdministrationRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/AWSCloudFormationStackSetExecutionRole"
+        - PolicyName: AWSCloudFormationStackSetExecutionRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/AWSCloudFormationStackSetAdministrationRole"
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSServiceCatalogEndUserFullAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  rServiceNowAwsEndUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref rServiceNowAwsEndUser
+
+  rServiceNowAwsEndUserSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: ServiceNowEndUser
+      Description: API Key for ServiceNow End User
+      SecretString: !Sub '{"AccessKeyID":"${rServiceNowAwsEndUserAccessKey}","AccessKey":"${rServiceNowAwsEndUserAccessKey.SecretAccessKey}"}'
+      Tags:
+        - Key: ServiceNow
+          Value: SyncEndUser
+
+  rServiceNowAwsSCConnectLaunch:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SCConnectLaunch
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - servicecatalog.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AWSCloudFormationFullAccess
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStackResource
+                - cloudformation:DescribeStackResources
+                - cloudformation:GetTemplate
+                - cloudformation:List*
+                - cloudformation:DescribeStackEvents
+                - cloudformation:DescribeStacks
+                - cloudformation:CreateStack
+                - cloudformation:DeleteStack
+                - cloudformation:DescribeStackEvents
+                - cloudformation:DescribeStacks
+                - cloudformation:GetTemplateSummary
+                - cloudformation:SetStackPolicy
+                - cloudformation:ValidateTemplate
+                - cloudformation:UpdateStack
+                - cloudformation:CreateChangeSet
+                - cloudformation:DescribeChangeSet
+                - cloudformation:ExecuteChangeSet
+                - cloudformation:DeleteChangeSet
+                - s3:GetObject"
+              Resource: "*"
+        - PolicyName: ServiceCatalogSSMActionsBaseline
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - servicecatalog:ListServiceActionsForProvisioningArtifact
+                - servicecatalog:ExecuteprovisionedProductServiceAction
+                - ssm:DescribeDocument
+                - ssm:GetAutomationExecution
+                - ssm:StartAutomationExecution
+                - ssm:StopAutomationExecution
+                - cloudformation:ListStackResources
+                - ec2:DescribeInstanceStatus
+                - ec2:StartInstances
+                - ec2:StopInstances
+              Resource: "*"
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEC2FullAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess
